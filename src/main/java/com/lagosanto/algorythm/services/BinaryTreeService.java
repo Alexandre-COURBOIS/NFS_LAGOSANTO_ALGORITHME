@@ -13,8 +13,6 @@ import java.util.*;
 public class BinaryTreeService {
 
     @Autowired
-    private RecipeService recipeService;
-    @Autowired
     private ArticleService articleService;
     @Autowired
     private WorkUnitService workUnitService;
