@@ -40,7 +40,12 @@ public class ProductionService {
         List<Order> orderList = binaryTreeService.prepareOrders(tuple.getTree().getRoot(), qty, tuple.getListWorkUnits(), listAllRecipe);
         Connection.Response response = makeRequest(orderList);
 
-        return new JSONObject(response.body());
+        JSONObject responseJson = new JSONObject(response.body());
+
+        System.out.println("Status : " +responseJson.get("status"));
+        System.out.println("Delay : "+responseJson.get("delay"));
+
+        return responseJson;
     }
 
     private Connection.Response makeRequest(List<Order> orderList) throws IOException {

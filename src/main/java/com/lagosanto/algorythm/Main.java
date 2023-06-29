@@ -14,7 +14,7 @@ public class Main {
         ApplicationContext context = SpringApplication.run(Main.class, args);
         ProductionService productionService = context.getBean(ProductionService.class);
         try {
-            productionService.launchProduction(120, 1);
+            productionService.launchProduction(256, 1);
         } catch (IOException e) {
             e.printStackTrace();
         }
