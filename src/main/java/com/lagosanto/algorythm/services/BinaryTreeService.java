@@ -69,26 +69,33 @@ public class BinaryTreeService {
         List<Article> articles = articleService.getAllArticles();
         List<RecipeQuantity> recipeQuantities = new ArrayList<>();
         List<WorkunitOperation> workunitOperationList = new ArrayList<>();
-
+        List<ArticleQuantity> articleQuantityList = new ArrayList<>();
 
         postFixTreatment(node, qty, workUnits, articles, listWorkUnits, recipeQuantities);
 
-        for (Map.Entry<WorkUnit, Set<Integer>> entry : listWorkUnits.entrySet()) {
-            WorkUnit workUnit = entry.getKey();
-            List<Integer> operations = new ArrayList<>(entry.getValue());
-            WorkunitOperation workunitOperation = new WorkunitOperation(workUnit, operations);
-            workunitOperationList.add(workunitOperation);
-        }
-        List<ArticleQuantity> articleQuantityList = buildArticleList(recipeQuantities, articles);
+        createWorkUnitOperationList(listWorkUnits, workunitOperationList);
+
+        createArticleQuantityList(articleQuantityList, recipeQuantities, articles);
 
         List<Order> orderList = createOrderList(workunitOperationList);
 
-        dispatchArticleToWorkUnit(articleQuantityList,allRecipes, workunitOperationList, orderList);
+        dispatchArticleToWorkUnit(articleQuantityList, allRecipes, workunitOperationList, orderList);
 
         return orderList;
     }
 
-    private List<Order> dispatchArticleToWorkUnit(List<ArticleQuantity> articleQuantityList,List<Recipe> recipes, List<WorkunitOperation> listWorkUnitOperation, List<Order> orderList) {
+    private void postFixTreatment(Node node, int qty, List<WorkUnit> workUnits, List<Article> articles, Map<WorkUnit, Set<Integer>> listWorkUnits, List<RecipeQuantity> recipeQuantities) throws IOException {
+        if (node.getLeft() != null) {
+            postFixTreatment(node.getLeft(), node.getRecipe().getQuantite1() * qty, workUnits, articles, listWorkUnits, recipeQuantities);
+        }
+        if (node.getRight() != null) {
+            postFixTreatment(node.getRight(), node.getRecipe().getQuantite2() * qty, workUnits, articles, listWorkUnits, recipeQuantities);
+        }
+        recipeQuantities.add(new RecipeQuantity(node.getRecipe(), qty));
+    }
+
+
+    private List<Order> dispatchArticleToWorkUnit(List<ArticleQuantity> articleQuantityList, List<Recipe> recipes, List<WorkunitOperation> listWorkUnitOperation, List<Order> orderList) {
 
         for (ArticleQuantity articleQuantity : articleQuantityList) {
             int operationIdArticle = articleQuantity.getArticle().getId();
@@ -108,20 +115,7 @@ public class BinaryTreeService {
                                 .findFirst();
 
                         if (optionalWorkunitOperation.isPresent()) {
-                            Order currentOrder = optionalWorkunitOperation.get();
-
-                            Optional<OperationOrder> existingOperationOrderOptional = currentOrder.getProductOperations().stream()
-                                    .filter(operationOrder -> operationOrder.getCodeArticle().equals(articleQuantity.getArticle().getCode()))
-                                    .findFirst();
-
-                            if (existingOperationOrderOptional.isPresent()) {
-                                OperationOrder existingOperationOrder = existingOperationOrderOptional.get();
-                                existingOperationOrder.setProductQuantity(existingOperationOrder.getProductQuantity() + articleQuantity.getQuantity());
-                            } else {
-                                OperationOrder newOperationOrder = new OperationOrder(articleQuantity.getArticle().getCode(), articleQuantity.getQuantity(), currentOrder.getProductOperations().size() == 0 ? 1 : currentOrder.getProductOperations().size() + 1);
-                                currentOrder.getProductOperations().add(newOperationOrder);
-                            }
-
+                            generateOrderList(articleQuantity, optionalWorkunitOperation);
                             break;
                         }
                     }
@@ -131,9 +125,25 @@ public class BinaryTreeService {
         return orderList;
     }
 
-    private List<ArticleQuantity> buildArticleList(List<RecipeQuantity> recipeQuantities, List<Article> articleList) {
+    private void generateOrderList(ArticleQuantity articleQuantity, Optional<Order> optionalWorkunitOperation) {
+        if (optionalWorkunitOperation.isPresent()) {
+            Order currentOrder = optionalWorkunitOperation.get();
 
-        List<ArticleQuantity> articleQuantity = new ArrayList<>();
+            Optional<OperationOrder> existingOperationOrderOptional = currentOrder.getProductOperations().stream()
+                    .filter(operationOrder -> operationOrder.getCodeArticle().equals(articleQuantity.getArticle().getCode()))
+                    .findFirst();
+
+            if (existingOperationOrderOptional.isPresent()) {
+                OperationOrder existingOperationOrder = existingOperationOrderOptional.get();
+                existingOperationOrder.setProductQuantity(existingOperationOrder.getProductQuantity() + articleQuantity.getQuantity());
+            } else {
+                OperationOrder newOperationOrder = new OperationOrder(articleQuantity.getArticle().getCode(), articleQuantity.getQuantity(), currentOrder.getProductOperations().size() == 0 ? 1 : currentOrder.getProductOperations().size() + 1);
+                currentOrder.getProductOperations().add(newOperationOrder);
+            }
+        }
+    }
+
+    private void createArticleQuantityList(List<ArticleQuantity> articleQuantityList, List<RecipeQuantity> recipeQuantities, List<Article> articleList) {
 
         for (RecipeQuantity recipeqty : recipeQuantities) {
 
@@ -143,22 +153,18 @@ public class BinaryTreeService {
 
             if (optArticle.isPresent()) {
                 ArticleQuantity artQuant = new ArticleQuantity(optArticle.get(), recipeqty.getQuantity());
-                articleQuantity.add(artQuant);
+                articleQuantityList.add(artQuant);
             }
         }
-
-        return articleQuantity;
     }
 
-
-    private void postFixTreatment(Node node, int qty, List<WorkUnit> workUnits, List<Article> articles, Map<WorkUnit, Set<Integer>> listWorkUnits, List<RecipeQuantity> recipeQuantities) throws IOException {
-        if (node.getLeft() != null) {
-            postFixTreatment(node.getLeft(), node.getRecipe().getQuantite1() * qty, workUnits, articles, listWorkUnits, recipeQuantities);
+    private void createWorkUnitOperationList(Map<WorkUnit, Set<Integer>> listWorkUnits, List<WorkunitOperation> workunitOperationList) {
+        for (Map.Entry<WorkUnit, Set<Integer>> entry : listWorkUnits.entrySet()) {
+            WorkUnit workUnit = entry.getKey();
+            List<Integer> operations = new ArrayList<>(entry.getValue());
+            WorkunitOperation workunitOperation = new WorkunitOperation(workUnit, operations);
+            workunitOperationList.add(workunitOperation);
         }
-        if (node.getRight() != null) {
-            postFixTreatment(node.getRight(), node.getRecipe().getQuantite2() * qty, workUnits, articles, listWorkUnits, recipeQuantities);
-        }
-        recipeQuantities.add(new RecipeQuantity(node.getRecipe(), qty));
     }
 
     private List<Order> createOrderList(List<WorkunitOperation> workUnitList) {
