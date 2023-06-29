@@ -29,7 +29,7 @@ public class ProductionService {
     @Autowired
     private BinaryTreeService binaryTreeService;
 
-    public JSONObject launchProduction(int idArticle, int qty) throws IOException {
+    public JSONObject launchProduction(int idArticle, int quantity) throws IOException {
         //Récupération de la recette de l'article
         Recipe recipe = recipeService.getRecipe(idArticle);
         List<Recipe> listAllRecipe = recipeService.getAllRecipe();
@@ -37,7 +37,7 @@ public class ProductionService {
         //Contient BinaryTree & ListeWorkUnit
         Tuple tuple = binaryTreeService.map(recipe, listAllRecipe);
 
-        List<Order> orderList = binaryTreeService.prepareOrders(tuple.getTree().getRoot(), qty, tuple.getListWorkUnits(), listAllRecipe);
+        List<Order> orderList = binaryTreeService.prepareOrders(tuple.getTree().getRoot(), quantity, tuple.getListWorkUnits(), listAllRecipe);
         Connection.Response response = makeRequest(orderList);
 
         JSONObject responseJson = new JSONObject(response.body());

@@ -63,14 +63,14 @@ public class BinaryTreeService {
         return new Tuple(new BinaryTree(constructNode(recipe, listAllRecipe, listWorkUnits)), listWorkUnits);
     }
 
-    public List<Order> prepareOrders(Node node, int qty, Map<WorkUnit, Set<Integer>> listWorkUnits, List<Recipe> allRecipes) throws IOException {
+    public List<Order> prepareOrders(Node node, int quantity, Map<WorkUnit, Set<Integer>> listWorkUnits, List<Recipe> allRecipes) throws IOException {
         List<WorkUnit> workUnits = new ArrayList<>();
         List<Article> articles = articleService.getAllArticles();
         List<RecipeQuantity> recipeQuantities = new ArrayList<>();
         List<WorkunitOperation> workunitOperationList = new ArrayList<>();
         List<ArticleQuantity> articleQuantityList = new ArrayList<>();
 
-        postFixTreatment(node, qty, workUnits, articles, listWorkUnits, recipeQuantities);
+        postFixTreatment(node,quantity,workUnits,articles,listWorkUnits,recipeQuantities);
         createWorkUnitOperationList(listWorkUnits, workunitOperationList);
         createArticleQuantityList(articleQuantityList, recipeQuantities, articles);
         List<Order> orderList = createOrderList(workunitOperationList);
@@ -79,14 +79,14 @@ public class BinaryTreeService {
         return orderList;
     }
 
-    private void postFixTreatment(Node node, int qty, List<WorkUnit> workUnits, List<Article> articles, Map<WorkUnit, Set<Integer>> listWorkUnits, List<RecipeQuantity> recipeQuantities) throws IOException {
+    private void postFixTreatment(Node node, int quantity, List<WorkUnit> workUnits, List<Article> articles, Map<WorkUnit, Set<Integer>> listWorkUnits, List<RecipeQuantity> recipeQuantities) throws IOException {
         if (node.getLeft() != null) {
-            postFixTreatment(node.getLeft(), node.getRecipe().getQuantite1() * qty, workUnits, articles, listWorkUnits, recipeQuantities);
+            postFixTreatment(node.getLeft(), node.getRecipe().getQuantite1() * quantity, workUnits, articles, listWorkUnits, recipeQuantities);
         }
         if (node.getRight() != null) {
-            postFixTreatment(node.getRight(), node.getRecipe().getQuantite2() * qty, workUnits, articles, listWorkUnits, recipeQuantities);
+            postFixTreatment(node.getRight(), node.getRecipe().getQuantite2() * quantity, workUnits, articles, listWorkUnits, recipeQuantities);
         }
-        recipeQuantities.add(new RecipeQuantity(node.getRecipe(), qty));
+        recipeQuantities.add(new RecipeQuantity(node.getRecipe(), quantity));
     }
 
     private void dispatchArticleToWorkUnit(List<ArticleQuantity> articleQuantityList, List<Recipe> recipes, List<WorkunitOperation> listWorkUnitOperation, List<Order> orderList) {
