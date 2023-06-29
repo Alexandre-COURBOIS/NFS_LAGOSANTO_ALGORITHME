@@ -1,16 +1,16 @@
 package com.lagosanto.algorythm.services;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lagosanto.algorythm.models.Order;
 import com.lagosanto.algorythm.models.Recipe;
 import com.lagosanto.algorythm.models.Tuple;
-import org.json.JSONObject;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.json.JSONObject;
 
 import java.io.IOException;
 import java.util.List;
@@ -32,19 +32,15 @@ public class ProductionService {
     public JSONObject launchProduction(int idArticle, int qty) throws IOException {
         //Récupération de la recette de l'article
         Recipe recipe = recipeService.getRecipe(idArticle);
+        List<Recipe> listAllRecipe = recipeService.getAllRecipe();
 
         //Contient BinaryTree & ListeWorkUnit
-        Tuple tuple = binaryTreeService.map(recipe);
+        Tuple tuple = binaryTreeService.map(recipe, listAllRecipe);
 
-        List<Order> orderList = binaryTreeService.prepareOrders(tuple.getTree().getRoot(), qty, tuple.getListWorkUnits());
+        List<Order> orderList = binaryTreeService.prepareOrders(tuple.getTree().getRoot(), qty, tuple.getListWorkUnits(), listAllRecipe);
         Connection.Response response = makeRequest(orderList);
 
-        JSONObject reponseJson =  new JSONObject(response.body());
-
-        System.out.println("Status : " +reponseJson.get("status"));
-        System.out.println("Delay : "+reponseJson.get("delay") + "ms");
-
-        return reponseJson;
+        return new JSONObject(response.body());
     }
 
     private Connection.Response makeRequest(List<Order> orderList) throws IOException {

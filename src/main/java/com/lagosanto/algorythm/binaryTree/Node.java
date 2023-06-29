@@ -2,15 +2,13 @@ package com.lagosanto.algorythm.binaryTree;
 
 import com.lagosanto.algorythm.models.Recipe;
 
-import java.util.Map;
-
 public class Node {
     private Node left;
     private Node right;
-    private Node parent;
+
     public Recipe recipe;
 
-    public Node(Recipe recipe, Node left, Node right,Boolean treated) {
+    public Node(Recipe recipe, Node left, Node right) {
         this.left = left;
         this.right = right;
         this.recipe = recipe;
@@ -30,14 +28,6 @@ public class Node {
 
     public Recipe getRecipe() {
         return recipe;
-    }
-
-    public Node getParent() {
-        return parent;
-    }
-
-    public void setParent(Node parent) {
-        this.parent = parent;
     }
 
     public void setRecipe(Recipe value) {

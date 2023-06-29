@@ -8,7 +8,6 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class BinaryTreeService {
@@ -21,8 +20,7 @@ public class BinaryTreeService {
     @Autowired
     private WorkUnitService workUnitService;
 
-
-    public Node buildNode(Recipe recipe, List<Recipe> allRecipes, Map<WorkUnit, Set<Integer>> listWorkUnits) throws IOException {
+    public Node constructNode(Recipe recipe, List<Recipe> allRecipes, Map<WorkUnit, Set<Integer>> listWorkUnits) throws IOException {
         if (recipe == null) {
             return null;
         }
@@ -36,9 +34,6 @@ public class BinaryTreeService {
         Recipe recipe1 = optRecipe1.orElse(null);
         Recipe recipe2 = optRecipe2.orElse(null);
 
-//        Map<Integer, Integer> recipeNode = generateMapForNode(recipe);
-//        Map<Integer, Integer> hashMapNodeLeft = generateMapForNode(recipe1);
-//        Map<Integer, Integer> hashMapNodeRight = generateMapForNode(recipe2);
 
         List<WorkUnit> workUnitAvaiblable = new ArrayList<>();
         for (Map.Entry<WorkUnit, Set<Integer>> entry : listWorkUnits.entrySet()) {
@@ -51,6 +46,7 @@ public class BinaryTreeService {
             workUnitAvaiblable = workUnitService.getWorkUnitsByOperation(recipe.getId_operation());
         }
 
+
         for (WorkUnit workUnit : workUnitAvaiblable) {
             if (listWorkUnits.containsKey(workUnit)) {
                 listWorkUnits.get(workUnit).add(recipe.getId_operation());
@@ -59,163 +55,120 @@ public class BinaryTreeService {
             }
         }
 
-        Node node = new Node(recipe, null, null, false);
-
-        Node leftNode = buildNode(recipe1, allRecipes, listWorkUnits);
-        Node rightNode = buildNode(recipe2, allRecipes, listWorkUnits);
-
-        setParent(node, leftNode);
-        setParent(node, rightNode);
-
-        node.setLeft(leftNode);
-        node.setRight(rightNode);
-
-        return node;
+        return new Node(recipe, constructNode(recipe1, allRecipes, listWorkUnits), constructNode(recipe2, allRecipes, listWorkUnits));
     }
 
-    private void setParent(Node parent, Node child) {
-        if (child != null) {
-            child.setParent(parent);
-        }
-    }
-
-    public Tuple map(Recipe recipe) throws IOException {
-        List<Recipe> listAllRecipe = recipeService.getAllRecipe();
+    public Tuple map(Recipe recipe, List<Recipe> listAllRecipe) throws IOException {
         Map<WorkUnit, Set<Integer>> listWorkUnits = new HashMap<>();
-        Map<Integer, Integer> emptyNodeQty = new HashMap<>();
-        //Initialisation de mon binary Tree avec ma list de workUnits updated avec chaque opération dans ma map de workunit
-        return new Tuple(new BinaryTree(buildNode(recipe, listAllRecipe, listWorkUnits)), listWorkUnits);
+
+        return new Tuple(new BinaryTree(constructNode(recipe, listAllRecipe, listWorkUnits)), listWorkUnits);
     }
 
-    public List<Order> treatRecipe(BinaryTree tree, Map<WorkUnit, Set<Integer>> listWorkUnits, int quantity) throws IOException {
+    public List<Order> prepareOrders(Node node, int qty, Map<WorkUnit, Set<Integer>> listWorkUnits, List<Recipe> allRecipes) throws IOException {
+        List<WorkUnit> workUnits = new ArrayList<>();
         List<Article> articles = articleService.getAllArticles();
+        List<RecipeQuantity> recipeQuantities = new ArrayList<>();
+        List<WorkunitOperation> workunitOperationList = new ArrayList<>();
 
-        Map<Article, RecipeInfo> mergedArtQty = treeTreatPerLevel(tree, articles, listWorkUnits, quantity);
 
-        return prepareOrder(mergedArtQty, listWorkUnits);
-    }
+        postFixTreatment(node, qty, workUnits, articles, listWorkUnits, recipeQuantities);
 
-    private List<Order> prepareOrder(Map<Article, RecipeInfo> buildToOrder, Map<WorkUnit, Set<Integer>> workUnitList) {
-        List<Order> orderList = createOrderList(workUnitList.keySet());
-        List<Order> tempOrderList = new ArrayList<>();
-
-        List<Map.Entry<Article, RecipeInfo>> sortedEntries = buildToOrder.entrySet().stream()
-                .sorted(Map.Entry.<Article, RecipeInfo>comparingByValue(
-                        Comparator.comparingInt(RecipeInfo::getFirstEncounteredLevel)).reversed())
-                .collect(Collectors.toList());
-
-        List<Order> orders = createOrderList(workUnitList.keySet());
-
-        Distributor distributor = new Distributor(workUnitList, sortedEntries);
-
-        Map<WorkUnit, LinkedList<Map.Entry<Article, RecipeInfo>>> recipes = distributor.distributeArticles();
-
-        for (Map.Entry<WorkUnit, LinkedList<Map.Entry<Article, RecipeInfo>>> entry : recipes.entrySet()) {
+        for (Map.Entry<WorkUnit, Set<Integer>> entry : listWorkUnits.entrySet()) {
             WorkUnit workUnit = entry.getKey();
-            LinkedList<Map.Entry<Article, RecipeInfo>> articleList = entry.getValue();
-
-            System.out.println("WorkUnit ID: " + workUnit.getCode());
-
-            Optional<Order> optOrd  = orders.stream()
-                    .filter(order -> order.getCodeWorkUnit().equals(workUnit.getCode()))
-                    .findFirst();
-
-            Order ord = optOrd.get();
-
-            List<OperationOrder> operationOrderList = new ArrayList<>();
-
-            for (Map.Entry<Article, RecipeInfo> articleEntry : articleList) {
-                Article article = articleEntry.getKey();
-                RecipeInfo recipeInfo = articleEntry.getValue();
-
-                OperationOrder operationOrder = new OperationOrder(article.getCode(),recipeInfo.getQuantity(), operationOrderList.size() + 1) ;
-                operationOrderList.add(operationOrder);
-            }
-
-            ord.setProductOperations(operationOrderList);
-            orderList.add(ord);
+            List<Integer> operations = new ArrayList<>(entry.getValue());
+            WorkunitOperation workunitOperation = new WorkunitOperation(workUnit, operations);
+            workunitOperationList.add(workunitOperation);
         }
+        List<ArticleQuantity> articleQuantityList = buildArticleList(recipeQuantities, articles);
 
-        orderList.removeIf(order -> order.getProductOperations().isEmpty());
+        List<Order> orderList = createOrderList(workunitOperationList);
+
+        dispatchArticleToWorkUnit(articleQuantityList,allRecipes, workunitOperationList, orderList);
 
         return orderList;
     }
 
+    private List<Order> dispatchArticleToWorkUnit(List<ArticleQuantity> articleQuantityList,List<Recipe> recipes, List<WorkunitOperation> listWorkUnitOperation, List<Order> orderList) {
 
-    private Map<Article, RecipeInfo> treeTreatPerLevel(BinaryTree tree, List<Article> articles, Map<WorkUnit, Set<Integer>> listWorkUnits, int quantity) throws IOException {
-        List<WorkUnit> workUnits = new ArrayList<>();
-        LinkedHashMap<Recipe, Integer> articleQty = new LinkedHashMap<>();
-        Map<Integer, List<Recipe>> nodesByLevel = new HashMap<>();
-        Map<Recipe, RecipeInfo> mapinfo = new HashMap<>();
+        for (ArticleQuantity articleQuantity : articleQuantityList) {
+            int operationIdArticle = articleQuantity.getArticle().getId();
 
-        BFS(tree.getRoot(), quantity, workUnits, articles, listWorkUnits, articleQty, nodesByLevel);
+            Optional<Recipe> optRecipe = recipes.stream()
+                    .filter(recipe -> recipe.getId_article() == operationIdArticle)
+                    .findFirst();
 
-        return recipesMerge(articles, articleQty, nodesByLevel, mapinfo);
-    }
+            if (optRecipe.isPresent()) {
+                Recipe recipe = optRecipe.get();
 
-    //Ici j'implémente le Breadth First Search (BFS) Algorithme de parcours horizontal
-    private void BFS(Node node, int qty, List<WorkUnit> workUnits, List<Article> articles, Map<WorkUnit, Set<Integer>> listWorkUnits, LinkedHashMap<Recipe, Integer> articleQty, Map<Integer, List<Recipe>> nodesByLevel) throws IOException {
-        if (node == null) return;
+                for (WorkunitOperation workunitOperation : listWorkUnitOperation) {
 
-        Queue<NodeQuantityPair> queue = new LinkedList<>();
-        queue.add(new NodeQuantityPair(node, qty, 1)); // niveau initial = 1
+                    if (workunitOperation.getOperations().contains(recipe.getId_operation())) {
+                        Optional<Order> optionalWorkunitOperation = orderList.stream()
+                                .filter(order -> order.getCodeWorkUnit().equals(workunitOperation.getWorkUnit().getCode()))
+                                .findFirst();
 
-        while (!queue.isEmpty()) {
-            NodeQuantityPair current = queue.poll();
-            Node currentNode = current.getNode();
-            int currentQty = current.getQty();
-            int currentLevel = current.getLevel();
+                        if (optionalWorkunitOperation.isPresent()) {
+                            Order currentOrder = optionalWorkunitOperation.get();
 
-            if (!nodesByLevel.containsKey(currentLevel)) {
-                nodesByLevel.put(currentLevel, new ArrayList<>());
-            }
-            nodesByLevel.get(currentLevel).add(currentNode.getRecipe());
+                            Optional<OperationOrder> existingOperationOrderOptional = currentOrder.getProductOperations().stream()
+                                    .filter(operationOrder -> operationOrder.getCodeArticle().equals(articleQuantity.getArticle().getCode()))
+                                    .findFirst();
 
-            articleQty.put(currentNode.getRecipe(), articleQty.getOrDefault(currentNode.getRecipe(), 0) + currentQty);
+                            if (existingOperationOrderOptional.isPresent()) {
+                                OperationOrder existingOperationOrder = existingOperationOrderOptional.get();
+                                existingOperationOrder.setProductQuantity(existingOperationOrder.getProductQuantity() + articleQuantity.getQuantity());
+                            } else {
+                                OperationOrder newOperationOrder = new OperationOrder(articleQuantity.getArticle().getCode(), articleQuantity.getQuantity(), currentOrder.getProductOperations().size() == 0 ? 1 : currentOrder.getProductOperations().size() + 1);
+                                currentOrder.getProductOperations().add(newOperationOrder);
+                            }
 
-            if (currentNode.getLeft() != null) {
-                queue.add(new NodeQuantityPair(currentNode.getLeft(), currentNode.getRecipe().getQuantite1() * currentQty, currentLevel + 1));
-            }
-
-            if (currentNode.getRight() != null) {
-                queue.add(new NodeQuantityPair(currentNode.getRight(), currentNode.getRecipe().getQuantite2() * currentQty, currentLevel + 1));
-            }
-        }
-    }
-
-    private Map<Article, RecipeInfo> recipesMerge(List<Article> articleList, LinkedHashMap<Recipe, Integer> articleQty, Map<Integer, List<Recipe>> nodesByLevels, Map<Recipe, RecipeInfo> recipeInfoMap) {
-        Map<Article, RecipeInfo> articleAndInfo = new HashMap<>();
-
-        for (Map.Entry<Recipe, Integer> entry : articleQty.entrySet()) {
-            Recipe recipe = entry.getKey();
-            int quantity = entry.getValue();
-            int firstEncounteredLevel = -1; //Si pas trouvé mets la value à -1 (ne doit pas se produire)
-            for (Map.Entry<Integer, List<Recipe>> levelEntry : nodesByLevels.entrySet()) {
-                if (levelEntry.getValue().contains(recipe)) {
-                    firstEncounteredLevel = levelEntry.getKey();
-                    break;
+                            break;
+                        }
+                    }
                 }
             }
+        }
+        return orderList;
+    }
+
+    private List<ArticleQuantity> buildArticleList(List<RecipeQuantity> recipeQuantities, List<Article> articleList) {
+
+        List<ArticleQuantity> articleQuantity = new ArrayList<>();
+
+        for (RecipeQuantity recipeqty : recipeQuantities) {
 
             Optional<Article> optArticle = articleList.stream()
-                    .filter(art -> art.getId() == recipe.getId_article())
+                    .filter(a -> a.getId() == recipeqty.getRecipe().getId_article())
                     .findFirst();
 
             if (optArticle.isPresent()) {
-                articleAndInfo.put(optArticle.get(), new RecipeInfo(quantity, firstEncounteredLevel));
+                ArticleQuantity artQuant = new ArticleQuantity(optArticle.get(), recipeqty.getQuantity());
+                articleQuantity.add(artQuant);
             }
         }
 
-        return articleAndInfo;
+        return articleQuantity;
     }
 
-    private List<Order> createOrderList(Set<WorkUnit> workUnitList) {
+
+    private void postFixTreatment(Node node, int qty, List<WorkUnit> workUnits, List<Article> articles, Map<WorkUnit, Set<Integer>> listWorkUnits, List<RecipeQuantity> recipeQuantities) throws IOException {
+        if (node.getLeft() != null) {
+            postFixTreatment(node.getLeft(), node.getRecipe().getQuantite1() * qty, workUnits, articles, listWorkUnits, recipeQuantities);
+        }
+        if (node.getRight() != null) {
+            postFixTreatment(node.getRight(), node.getRecipe().getQuantite2() * qty, workUnits, articles, listWorkUnits, recipeQuantities);
+        }
+        recipeQuantities.add(new RecipeQuantity(node.getRecipe(), qty));
+    }
+
+    private List<Order> createOrderList(List<WorkunitOperation> workUnitList) {
         List<Order> orders = new ArrayList<>();
 
-        for (WorkUnit workunit : workUnitList) {
-            orders.add(new Order(workunit.getCode(), new ArrayList<OperationOrder>()));
+        for (WorkunitOperation workunit : workUnitList) {
+            orders.add(new Order(workunit.getWorkUnit().getCode(), new ArrayList<OperationOrder>()));
         }
 
         return orders;
     }
+
 }
