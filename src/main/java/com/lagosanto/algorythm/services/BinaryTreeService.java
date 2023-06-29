@@ -11,12 +11,11 @@ import java.util.*;
 
 @Service
 public class BinaryTreeService {
+
     @Autowired
     private RecipeService recipeService;
-
     @Autowired
     private ArticleService articleService;
-
     @Autowired
     private WorkUnitService workUnitService;
 
@@ -25,42 +24,44 @@ public class BinaryTreeService {
             return null;
         }
 
-        Optional<Recipe> optRecipe1 = allRecipes.stream()
-                .filter(r -> r.getId_article() == recipe.getId_composant1())
-                .findFirst();
-        Optional<Recipe> optRecipe2 = allRecipes.stream()
-                .filter(r -> r.getId_article() == recipe.getId_composant2())
-                .findFirst();
-        Recipe recipe1 = optRecipe1.orElse(null);
-        Recipe recipe2 = optRecipe2.orElse(null);
+        Recipe recipe1 = findRecipeById(recipe.getId_composant1(), allRecipes);
+        Recipe recipe2 = findRecipeById(recipe.getId_composant2(), allRecipes);
 
+        List<WorkUnit> workUnitAvaiblable = getWorkUnitsAvailable(listWorkUnits, recipe);
 
+        updateWorkUnits(listWorkUnits, workUnitAvaiblable, recipe);
+
+        return new Node(recipe, constructNode(recipe1, allRecipes, listWorkUnits), constructNode(recipe2, allRecipes, listWorkUnits));
+    }
+
+    private Recipe findRecipeById(int id, List<Recipe> allRecipes) {
+        return allRecipes.stream()
+                .filter(r -> r.getId_article() == id)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private List<WorkUnit> getWorkUnitsAvailable(Map<WorkUnit, Set<Integer>> listWorkUnits, Recipe recipe) throws IOException {
         List<WorkUnit> workUnitAvaiblable = new ArrayList<>();
         for (Map.Entry<WorkUnit, Set<Integer>> entry : listWorkUnits.entrySet()) {
             if (entry.getValue().contains(recipe.getId_operation())) {
                 workUnitAvaiblable.add(entry.getKey());
             }
         }
-
-        if (workUnitAvaiblable.size() == 0) {
+        if (workUnitAvaiblable.isEmpty()) {
             workUnitAvaiblable = workUnitService.getWorkUnitsByOperation(recipe.getId_operation());
         }
+        return workUnitAvaiblable;
+    }
 
-
+    private void updateWorkUnits(Map<WorkUnit, Set<Integer>> listWorkUnits, List<WorkUnit> workUnitAvaiblable, Recipe recipe) {
         for (WorkUnit workUnit : workUnitAvaiblable) {
-            if (listWorkUnits.containsKey(workUnit)) {
-                listWorkUnits.get(workUnit).add(recipe.getId_operation());
-            } else {
-                listWorkUnits.put(workUnit, new HashSet<Integer>(recipe.getId_operation()));
-            }
+            listWorkUnits.computeIfAbsent(workUnit, k -> new HashSet<>()).add(recipe.getId_operation());
         }
-
-        return new Node(recipe, constructNode(recipe1, allRecipes, listWorkUnits), constructNode(recipe2, allRecipes, listWorkUnits));
     }
 
     public Tuple map(Recipe recipe, List<Recipe> listAllRecipe) throws IOException {
         Map<WorkUnit, Set<Integer>> listWorkUnits = new HashMap<>();
-
         return new Tuple(new BinaryTree(constructNode(recipe, listAllRecipe, listWorkUnits)), listWorkUnits);
     }
 
@@ -94,67 +95,45 @@ public class BinaryTreeService {
         recipeQuantities.add(new RecipeQuantity(node.getRecipe(), qty));
     }
 
-
-    private List<Order> dispatchArticleToWorkUnit(List<ArticleQuantity> articleQuantityList, List<Recipe> recipes, List<WorkunitOperation> listWorkUnitOperation, List<Order> orderList) {
-
+    private void dispatchArticleToWorkUnit(List<ArticleQuantity> articleQuantityList, List<Recipe> recipes, List<WorkunitOperation> listWorkUnitOperation, List<Order> orderList) {
         for (ArticleQuantity articleQuantity : articleQuantityList) {
-            int operationIdArticle = articleQuantity.getArticle().getId();
-
-            Optional<Recipe> optRecipe = recipes.stream()
-                    .filter(recipe -> recipe.getId_article() == operationIdArticle)
-                    .findFirst();
-
-            if (optRecipe.isPresent()) {
-                Recipe recipe = optRecipe.get();
-
-                for (WorkunitOperation workunitOperation : listWorkUnitOperation) {
-
-                    if (workunitOperation.getOperations().contains(recipe.getId_operation())) {
-                        Optional<Order> optionalWorkunitOperation = orderList.stream()
-                                .filter(order -> order.getCodeWorkUnit().equals(workunitOperation.getWorkUnit().getCode()))
-                                .findFirst();
-
-                        if (optionalWorkunitOperation.isPresent()) {
-                            generateOrderList(articleQuantity, optionalWorkunitOperation);
-                            break;
-                        }
-                    }
-                }
-            }
+            recipes.stream()
+                    .filter(recipe -> recipe.getId_article() == articleQuantity.getArticle().getId())
+                    .findFirst()
+                    .ifPresent(recipe -> processRecipe(articleQuantity, listWorkUnitOperation, orderList, recipe));
         }
-        return orderList;
     }
 
-    private void generateOrderList(ArticleQuantity articleQuantity, Optional<Order> optionalWorkunitOperation) {
-        if (optionalWorkunitOperation.isPresent()) {
-            Order currentOrder = optionalWorkunitOperation.get();
+    private void processRecipe(ArticleQuantity articleQuantity, List<WorkunitOperation> listWorkUnitOperation, List<Order> orderList, Recipe recipe) {
+        for (WorkunitOperation workunitOperation : listWorkUnitOperation) {
+            if (workunitOperation.getOperations().contains(recipe.getId_operation())) {
 
-            Optional<OperationOrder> existingOperationOrderOptional = currentOrder.getProductOperations().stream()
-                    .filter(operationOrder -> operationOrder.getCodeArticle().equals(articleQuantity.getArticle().getCode()))
-                    .findFirst();
-
-            if (existingOperationOrderOptional.isPresent()) {
-                OperationOrder existingOperationOrder = existingOperationOrderOptional.get();
-                existingOperationOrder.setProductQuantity(existingOperationOrder.getProductQuantity() + articleQuantity.getQuantity());
-            } else {
-                OperationOrder newOperationOrder = new OperationOrder(articleQuantity.getArticle().getCode(), articleQuantity.getQuantity(), currentOrder.getProductOperations().size() == 0 ? 1 : currentOrder.getProductOperations().size() + 1);
-                currentOrder.getProductOperations().add(newOperationOrder);
+                orderList.stream()
+                        .filter(order -> order.getCodeWorkUnit().equals(workunitOperation.getWorkUnit().getCode()))
+                        .findFirst()
+                        .ifPresent(order -> generateOrderList(articleQuantity, order));
+                break;
             }
         }
+    }
+
+    private void generateOrderList(ArticleQuantity articleQuantity, Order currentOrder) {
+        currentOrder.getProductOperations().stream()
+                .filter(operationOrder -> operationOrder.getCodeArticle().equals(articleQuantity.getArticle().getCode()))
+                .findFirst()
+                .ifPresentOrElse(existingOperationOrder -> existingOperationOrder.setProductQuantity(existingOperationOrder.getProductQuantity() + articleQuantity.getQuantity()),
+                        () -> {
+                            OperationOrder newOperationOrder = new OperationOrder(articleQuantity.getArticle().getCode(), articleQuantity.getQuantity(), currentOrder.getProductOperations().size() == 0 ? 1 : currentOrder.getProductOperations().size() + 1);
+                            currentOrder.getProductOperations().add(newOperationOrder);
+                        });
     }
 
     private void createArticleQuantityList(List<ArticleQuantity> articleQuantityList, List<RecipeQuantity> recipeQuantities, List<Article> articleList) {
-
         for (RecipeQuantity recipeqty : recipeQuantities) {
-
-            Optional<Article> optArticle = articleList.stream()
+            articleList.stream()
                     .filter(a -> a.getId() == recipeqty.getRecipe().getId_article())
-                    .findFirst();
-
-            if (optArticle.isPresent()) {
-                ArticleQuantity artQuant = new ArticleQuantity(optArticle.get(), recipeqty.getQuantity());
-                articleQuantityList.add(artQuant);
-            }
+                    .findFirst()
+                    .ifPresent(article -> articleQuantityList.add(new ArticleQuantity(article, recipeqty.getQuantity())));
         }
     }
 
@@ -162,19 +141,15 @@ public class BinaryTreeService {
         for (Map.Entry<WorkUnit, Set<Integer>> entry : listWorkUnits.entrySet()) {
             WorkUnit workUnit = entry.getKey();
             List<Integer> operations = new ArrayList<>(entry.getValue());
-            WorkunitOperation workunitOperation = new WorkunitOperation(workUnit, operations);
-            workunitOperationList.add(workunitOperation);
+            workunitOperationList.add(new WorkunitOperation(workUnit, operations));
         }
     }
 
     private List<Order> createOrderList(List<WorkunitOperation> workUnitList) {
         List<Order> orders = new ArrayList<>();
-
         for (WorkunitOperation workunit : workUnitList) {
-            orders.add(new Order(workunit.getWorkUnit().getCode(), new ArrayList<OperationOrder>()));
+            orders.add(new Order(workunit.getWorkUnit().getCode(), new ArrayList<>()));
         }
-
         return orders;
     }
-
 }
