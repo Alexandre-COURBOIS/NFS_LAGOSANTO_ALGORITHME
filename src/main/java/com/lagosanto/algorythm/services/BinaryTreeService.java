@@ -73,13 +73,9 @@ public class BinaryTreeService {
         List<ArticleQuantity> articleQuantityList = new ArrayList<>();
 
         postFixTreatment(node, qty, workUnits, articles, listWorkUnits, recipeQuantities);
-
         createWorkUnitOperationList(listWorkUnits, workunitOperationList);
-
         createArticleQuantityList(articleQuantityList, recipeQuantities, articles);
-
         List<Order> orderList = createOrderList(workunitOperationList);
-
         dispatchArticleToWorkUnit(articleQuantityList, allRecipes, workunitOperationList, orderList);
 
         return orderList;
